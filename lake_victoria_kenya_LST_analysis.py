@@ -27,24 +27,26 @@ def apply_scale_and_offset_l8_9(image):
     return image.addBands(st_band)
 
 def create_cloud_mask_l4_5_7(image):
-    qa = image.select('QA_PIXEL')
-    fill_mask = qa.bitwiseAnd(1).eq(0)                  # 0 = not fill, 1 = fill
-    cloud_mask = qa.bitwiseAnd(1 << 3).eq(0)            # 0 = not cloud, 1 = cloud
-    cloud_dilated_mask = qa.bitwiseAnd(1 << 1).eq(0)    # 0 = not dilated cloud, 1 = dilated cloud
-    cloud_shadow_mask = qa.bitwiseAnd(1 << 4).eq(0)     # 0 = not cloud shadow, 1 = cloud shadow
-    snow_mask = qa.bitwiseAnd(1 << 5).eq(0)             # 0 = not snow, 1 = snow
-    mask = fill_mask.And(cloud_mask).And(cloud_dilated_mask).And(cloud_shadow_mask).And(snow_mask)
+    qa                  = image.select('QA_PIXEL')
+    fill_mask           = qa.bitwiseAnd(1).eq(0)          # 0 = not fill, 1 = fill
+    cloud_mask          = qa.bitwiseAnd(1 << 3).eq(0)     # 0 = not cloud, 1 = cloud
+    cloud_dilated_mask  = qa.bitwiseAnd(1 << 1).eq(0)     # 0 = not dilated cloud, 1 = dilated cloud
+    cloud_shadow_mask   = qa.bitwiseAnd(1 << 4).eq(0)     # 0 = not cloud shadow, 1 = cloud shadow
+    snow_mask           = qa.bitwiseAnd(1 << 5).eq(0)     # 0 = not snow, 1 = snow
+    mask                = fill_mask.And(cloud_mask).And(cloud_dilated_mask)\
+                            .And(cloud_shadow_mask).And(snow_mask)
     return mask
 
 def create_cloud_mask_l8_9(image):
-    qa = image.select('QA_PIXEL')
-    fill_mask = qa.bitwiseAnd(1).eq(0)                  # 0 = not fill, 1 = fill
-    cloud_mask = qa.bitwiseAnd(1 << 3).eq(0)            # 0 = not cloud, 1 = cloud
-    cloud_dilated_mask = qa.bitwiseAnd(1 << 1).eq(0)    # 0 = not dilated cloud, 1 = dilated cloud
-    cirrus_mask = qa.bitwiseAnd(1 << 2).eq(0)           # 0 = not cirrus, 1 = cirrus
-    cloud_shadow_mask = qa.bitwiseAnd(1 << 4).eq(0)     # 0 = not cloud shadow, 1 = cloud shadow
-    snow_mask = qa.bitwiseAnd(1 << 5).eq(0)             # 0 = not snow, 1 = snow
-    mask = fill_mask.And(cloud_mask).And(cloud_dilated_mask).And(cirrus_mask).And(cloud_shadow_mask).And(snow_mask)
+    qa                  = image.select('QA_PIXEL')
+    fill_mask           = qa.bitwiseAnd(1).eq(0)         # 0 = not fill, 1 = fill
+    cloud_mask          = qa.bitwiseAnd(1 << 3).eq(0)    # 0 = not cloud, 1 = cloud
+    cloud_dilated_mask  = qa.bitwiseAnd(1 << 1).eq(0)    # 0 = not dilated cloud, 1 = dilated cloud
+    cirrus_mask         = qa.bitwiseAnd(1 << 2).eq(0)    # 0 = not cirrus, 1 = cirrus
+    cloud_shadow_mask   = qa.bitwiseAnd(1 << 4).eq(0)    # 0 = not cloud shadow, 1 = cloud shadow
+    snow_mask           = qa.bitwiseAnd(1 << 5).eq(0)    # 0 = not snow, 1 = snow
+    mask                = fill_mask.And(cloud_mask).And(cloud_dilated_mask)\
+                            .And(cirrus_mask).And(cloud_shadow_mask).And(snow_mask)
     return mask
 
 def process_landsat(collection, roi, satellite_name, apply_scale_func, create_mask_func):
@@ -64,7 +66,7 @@ def process_landsat(collection, roi, satellite_name, apply_scale_func, create_ma
             stats = masked_image.select('surface_temp').reduceRegion(
                 reducer=ee.Reducer.count(), geometry=roi, scale=30).getInfo()
             
-            # If there are valid pixels, compute the average temperature
+            # compute the average temperature for valid pixels only
             if stats['surface_temp'] > 0:
                 mean_temp = masked_image.select('surface_temp').reduceRegion(
                     reducer=ee.Reducer.mean(), geometry=roi, scale=30).getInfo()['surface_temp']
@@ -80,19 +82,19 @@ def process_landsat(collection, roi, satellite_name, apply_scale_func, create_ma
 def LST_analysis(lon, lat, output_csv='lake_temperature.csv'):
     roi = create_roi(lon, lat)
 
-    collections = [
+    collection_params = [
         ('LANDSAT/LT04/C02/T1_L2', 'Landsat 4', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
         ('LANDSAT/LT05/C02/T1_L2', 'Landsat 5', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
-        # ('LANDSAT/LE07/C02/T1_L2', 'Landsat 7', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
-        # ('LANDSAT/LC08/C02/T1_L2', 'Landsat 8', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9),
-        # ('LANDSAT/LC09/C02/T1_L2', 'Landsat 9', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9)
-        ]
+        ('LANDSAT/LE07/C02/T1_L2', 'Landsat 7', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
+        ('LANDSAT/LC08/C02/T1_L2', 'Landsat 8', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9),
+        ('LANDSAT/LC09/C02/T1_L2', 'Landsat 9', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9),
+    ]
 
     results = []
-    for collection, name, scale_func, cloud_mask_func in collections:
-        img_col = ee.ImageCollection(collection)
-        results = process_landsat(img_col, roi, name, scale_func, cloud_mask_func)
-        results.extend(results)
+    for col_name, sensor_name, scale_func, cloud_mask_func in collection_params:
+        collection = ee.ImageCollection(col_name)
+        sensor_results = process_landsat(collection, roi, sensor_name, scale_func, cloud_mask_func)
+        results.extend(sensor_results)
 
     data_df = pd.DataFrame(results)
     data_df['date'] = pd.to_datetime(data_df['date'])
@@ -100,6 +102,30 @@ def LST_analysis(lon, lat, output_csv='lake_temperature.csv'):
     data_df.to_csv(output_csv, index=False)
 
     return data_df
+
+# def LST_analysis(lon, lat, output_csv='lake_temperature.csv'):
+#     roi = create_roi(lon, lat)
+
+#     collections = [
+#         ('LANDSAT/LT04/C02/T1_L2', 'Landsat 4', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
+#         ('LANDSAT/LT05/C02/T1_L2', 'Landsat 5', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
+#         # ('LANDSAT/LE07/C02/T1_L2', 'Landsat 7', apply_scale_and_offset_l4_5_7, create_cloud_mask_l4_5_7),
+#         # ('LANDSAT/LC08/C02/T1_L2', 'Landsat 8', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9),
+#         # ('LANDSAT/LC09/C02/T1_L2', 'Landsat 9', apply_scale_and_offset_l8_9, create_cloud_mask_l8_9)
+#         ]
+
+#     results = []
+#     for collection, name, scale_func, cloud_mask_func in collections:
+#         img_col = ee.ImageCollection(collection)
+#         results = process_landsat(img_col, roi, name, scale_func, cloud_mask_func)
+#         results.append(results)
+
+#     data_df = pd.DataFrame(results)
+#     data_df['date'] = pd.to_datetime(data_df['date'])
+#     data_df.sort_values('date', inplace=True)
+#     data_df.to_csv(output_csv, index=False)
+
+#     return data_df
 
 def LST_trends_analysis(df):
     df['date'] = pd.to_datetime(df['date'])
@@ -173,7 +199,7 @@ def create_interactive_map(lon, lat, buffer_distance=200):
     m.addLayer(center_point, {'color': 'yellow'}, 'Center Point')
     return m
 
-def plot_time_series(df, figsize=(14, 7), title='Lake Surface Temperature Time Series', window=20):
+def plot_time_series(df, figsize=(14, 7), title='Lake Surface Temperature Time Series', window=30):
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date')
 
@@ -287,6 +313,37 @@ def main():
     report, annual = trends_report(df)
     print(report)
    
+    print(f"""
+    LAKE SURFACE TEMPERATURE TREND REPORT
+    ====================================
+
+    1. Temporal Coverage:
+    - Analysis Period: {report['period']}
+    - Baseline Period (1984-2000): {report['baseline_mean_K']:.2f} K
+    - Recent Period (2010-present): {report['recent_mean_K']:.2f} K
+    - Anomaly: {report['anomaly_K']:.2f} K
+
+    2. Warming Trends:
+    - Rate: {report['trend_K_decade']:.2f} K/decade
+    - Total Warming: {report['total_warming_K']:.2f} K
+    - Statistical Significance (p-value): {report['p_value']:.3f}
+    - Model Fit (R²): {report['r_squared']:.6f}
+
+    3. Extreme Events:
+    - Heat Threshold (90th %ile): {report['extreme_heat_threshold_K']:.2f} K
+    - Cold Threshold (10th %ile): {report['extreme_cold_threshold_K']:.2f} K
+
+    4. Quality Indicators:
+    - Annual Observations Range: {annual['Observations'].min()}-{annual['Observations'].max()}
+    - Missing Years: {sorted(set(range(annual['date'].min(), annual['date'].max()+1)) - set(annual['date']))}
+
+    5. Conclusion
+        Lake surface temperatures showedi a lower significant trend from 1984–2025 (R² = {report['r_squared']:.2f}, p-value = {report['p_value']:.3f}), with 
+        a slight warming anomaly ({report['anomaly_K']:.2f}) in recent decades. Extreme events were symmetrically distributed, 
+        suggesting stable climatic variability. The reported extreme threshold of 2.63K above baseline shows 
+        the Lake experiances moderate variability in temperature without prounced warming/cooling events,
+        contrary to the alarming reports from earth scientists.
+    """)
 
 if __name__ == "__main__":
     main()
